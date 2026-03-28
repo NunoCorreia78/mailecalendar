@@ -16,8 +16,21 @@
     "directories": {
       "output": "release"
     },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "verifyUpdateCodeSignature": false,
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "identity": null
     }
   },
   "dependencies": {
