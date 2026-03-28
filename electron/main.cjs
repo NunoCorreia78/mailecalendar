@@ -55,7 +55,7 @@ ipcMain.handle('sync-emails', async (event, accountId, folderName = 'INBOX') => 
       return { success: true };
     }
 
-    const start = Math.max(1, total - 49); // fetch last 50
+    const start = Math.max(1, total - 299); // fetch last 300
     // Fetch FLAGS explicitly alongside the body to correctly detect \Seen
     const messages = await connection.search([`${start}:*`], { bodies: [''], markSeen: false, struct: false });
 
@@ -171,7 +171,7 @@ ipcMain.handle('get-account', async () => {
 // Fetch local emails
 ipcMain.handle('get-local-emails', async (event, folderName = 'INBOX') => {
   try {
-    const emails = db.prepare(`SELECT * FROM emails WHERE folder = ? ORDER BY is_pinned DESC, timestamp DESC LIMIT 150`).all(folderName);
+    const emails = db.prepare(`SELECT * FROM emails WHERE folder = ? ORDER BY is_pinned DESC, timestamp DESC LIMIT 1000`).all(folderName);
     return { success: true, data: emails };
   } catch(e) { return { success: false, error: e.message }; }
 });
