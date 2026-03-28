@@ -23,5 +23,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveGoogleCredentials: (id, secret) => ipcRenderer.invoke('save-google-credentials', id, secret),
   startGoogleAuth: () => ipcRenderer.invoke('start-google-auth'),
   clearEmailCache: () => ipcRenderer.invoke('clear-email-cache'),
+  auditUnread: (accountId) => ipcRenderer.invoke('audit-unread', accountId),
   saveAccount: (data) => ipcRenderer.invoke('save-account', data),
 });

@@ -7,8 +7,10 @@ interface ElectronAPI {
   toggleFlag: (emailId: string, field: string, status: boolean) => Promise<{ success: boolean; error?: string }>;
   getCalendarEvents: () => Promise<{ success: boolean; data?: any[]; error?: string }>;
   sendEmail: (accountId: number, mailOptions: any) => Promise<{ success: boolean; messageId?: string; error?: string }>;
-  executeAction: (emailIds: string[], action: string) => Promise<{ success: boolean; error?: string }>;
-  getTodos: () => Promise<{ success: boolean; data?: any[]; error?: string }>;
+  executeAction: (emailIds: string[], action: 'Archive' | 'Trash' | 'Spam') => Promise<{ success: boolean; error?: string }>;
+  clearEmailCache: () => Promise<{ success: boolean; cleared?: number; error?: string }>;
+  auditUnread: (accountId: number) => Promise<{ success: boolean; count?: number; subjects?: string[]; error?: string }>;
+  getTodos: () => Promise<{ success: boolean; data?: any[] }>;
   addTodo: (task: string) => Promise<{ success: boolean; error?: string }>;
   toggleTodo: (id: number, isCompleted: boolean) => Promise<{ success: boolean; error?: string }>;
   deleteTodo: (id: number) => Promise<{ success: boolean; error?: string }>;

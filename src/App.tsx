@@ -20,6 +20,7 @@ function App() {
   const [password, setPassword] = useState('')
   const [googleClientId, setGoogleClientId] = useState('')
   const [googleClientSecret, setGoogleClientSecret] = useState('')
+  const [accountId, setAccountId] = useState<number | null>(null)
 
   useEffect(() => {
     let unmounted = false;
@@ -37,6 +38,7 @@ function App() {
                   setPassword(res.data.password || '');
                   setGoogleClientId(res.data.google_client_id || '');
                   setGoogleClientSecret(res.data.google_client_secret || '');
+                  setAccountId(res.data.id || null);
                   setActiveTab('email');
                }
             } else {
@@ -334,6 +336,23 @@ function App() {
                     style={{ padding: '10px 20px', backgroundColor: 'transparent', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '10px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
                   >
                     🗑️ Limpar Cache de Emails & Ressincronizar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!accountId) { setAuthStatus({ message: 'Nenhuma conta configurada.', isError: true }); return; }
+                      setAuthStatus({ message: 'A auditar servidor IMAP...', isError: false });
+                      if (window.electronAPI && (window.electronAPI as any).auditUnread) {
+                        const r = await (window.electronAPI as any).auditUnread(accountId);
+                        if (r.success) {
+                          setAuthStatus({ message: `📊 Diag: O servidor IMAP reporta exatamente ${r.count} email(s) não lido(s). ${r.count > 0 ? `Ex: ${r.subjects.slice(0,3).join(', ')}` : ''}`, isError: false });
+                        } else {
+                          setAuthStatus({ message: `Erro ao auditar IMAP: ${r.error}`, isError: true });
+                        }
+                      }
+                    }}
+                    style={{ marginLeft: '12px', padding: '10px 20px', backgroundColor: 'transparent', color: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: '10px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    📡 Auditar Estado Real do Servidor
                   </button>
                 </div>
                 

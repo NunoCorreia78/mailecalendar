@@ -100,7 +100,8 @@ ipcMain.handle('sync-emails', async (event, accountId, folderName = 'INBOX') => 
 
       // Correctly detect read status from IMAP flags
       const flags = item.attributes.flags || [];
-      const isRead = flags.some(f => f === '\\Seen' || f.toLowerCase() === '\\seen') ? 1 : 0;
+      const isRead = flags.some(f => f === '\\Seen' || f.toLowerCase() === '\\seen' || f === 'SEEN' || f === 'Seen') ? 1 : 0;
+      console.log(`Email ID: ${id} | Flags from IMAP:`, flags, `| isRead Result: ${isRead}`);
 
       const timestamp = mail.date ? mail.date.toISOString() : new Date().toISOString();
       const sender = mail.from && mail.from.text ? mail.from.text : account.email;
@@ -125,6 +126,25 @@ ipcMain.handle('clear-email-cache', async () => {
     const count = db.prepare('SELECT COUNT(*) as c FROM emails').get();
     db.prepare('DELETE FROM emails').run();
     return { success: true, cleared: count.c };
+  } catch(e) { return { success: false, error: e.message }; }
+});
+
+// Audit unread directly
+ipcMain.handle('audit-unread', async (event, accountId) => {
+  try {
+    const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId);
+    if (!account) throw new Error('Conta não encontrada.');
+    const config = {
+      imap: { user: account.email, password: account.password, host: account.imap_host, port: account.imap_port, tls: account.imap_port === 993, tlsOptions: { rejectUnauthorized: false }, authTimeout: 15000 }
+    };
+    const connection = await imaps.connect(config);
+    await connection.openBox('INBOX');
+    const unseen = await connection.search(['UNSEEN'], { bodies: ['HEADER.FIELDS (SUBJECT)'], struct: false });
+    connection.end();
+    return { success: true, count: unseen.length, subjects: unseen.map(u => {
+      const headerObj = u.parts.find(p => p.which !== '');
+      return headerObj ? headerObj.body.subject : 'No subject';
+    }) };
   } catch(e) { return { success: false, error: e.message }; }
 });
 
