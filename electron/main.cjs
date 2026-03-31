@@ -209,13 +209,15 @@ ipcMain.handle('get-calendar-events', async () => {
     const localEvents = db.prepare('SELECT * FROM events').all();
     let parsedEvents = [];
     localEvents.forEach(le => {
-       parsedEvents.push({ 
-           id: le.id, 
-           title: le.title, 
-           start: new Date(le.start_time), 
-           end: new Date(le.end_time), 
-           description: '', 
-           isExternal: String(le.id).includes('@google') || String(le.id).length > 20 
+       const isExternal = String(le.id).includes('@google') || String(le.id).length > 20;
+       parsedEvents.push({
+           id: le.id,
+           title: le.title,
+           start: new Date(le.start_time),
+           end: new Date(le.end_time),
+           description: le.description || '',
+           color: le.color || (isExternal ? '#0f9d58' : '#0b57d0'),
+           isExternal
        });
     });
     return { success: true, data: parsedEvents };
@@ -226,16 +228,16 @@ ipcMain.handle('sync-calendar-content', async () => {
    try {
       const account = db.prepare(`SELECT calendar_url, id FROM accounts LIMIT 1`).get();
       if (!account || !account.calendar_url) return { success: false };
-      
-      const insertStmt = db.prepare(`INSERT OR REPLACE INTO events (id, account_id, title, start_time, end_time) VALUES (?, ?, ?, ?, ?)`);
+
+      const insertStmt = db.prepare(`INSERT OR REPLACE INTO events (id, account_id, title, start_time, end_time, color) VALUES (?, ?, ?, ?, ?, ?)`);
       const events = await ical.async.fromURL(account.calendar_url);
-      
+
       const insertMany = db.transaction(() => {
          for (let k in events) {
             if (events.hasOwnProperty(k)) {
                const ev = events[k];
                if (ev.type === 'VEVENT') {
-                  insertStmt.run(ev.uid, account.id, ev.summary || 'Incógnito', new Date(ev.start).toISOString(), new Date(ev.end).toISOString());
+                  insertStmt.run(ev.uid, account.id, ev.summary || 'Incógnito', new Date(ev.start).toISOString(), new Date(ev.end).toISOString(), '#0f9d58');
                }
             }
          }
@@ -245,18 +247,32 @@ ipcMain.handle('sync-calendar-content', async () => {
    } catch(e) { return { success: false, error: e.message }; }
 });
 
-ipcMain.handle('add-local-event', (e, title, start_time, end_time) => {
+ipcMain.handle('add-local-event', (e, title, start_time, end_time, color) => {
    try {
      const id = require('crypto').randomUUID();
      const account = db.prepare('SELECT id FROM accounts LIMIT 1').get();
-     db.prepare('INSERT INTO events (id, account_id, title, start_time, end_time) VALUES (?, ?, ?, ?, ?)').run(id, account ? account.id : 0, title, start_time, end_time);
+     const eventColor = color || '#0b57d0';
+     db.prepare('INSERT INTO events (id, account_id, title, start_time, end_time, color) VALUES (?, ?, ?, ?, ?, ?)').run(id, account ? account.id : 0, title, start_time, end_time, eventColor);
+     return { success: true, id };
+   } catch(e) { return { success: false, error: e.message }; }
+});
+
+ipcMain.handle('update-local-event', (e, id, start_time, end_time, title, color) => {
+   try {
+     if (title !== undefined && color !== undefined) {
+       db.prepare('UPDATE events SET start_time = ?, end_time = ?, title = ?, color = ? WHERE id = ?').run(start_time, end_time, title, color, id);
+     } else if (title !== undefined) {
+       db.prepare('UPDATE events SET start_time = ?, end_time = ?, title = ? WHERE id = ?').run(start_time, end_time, title, id);
+     } else {
+       db.prepare('UPDATE events SET start_time = ?, end_time = ? WHERE id = ?').run(start_time, end_time, id);
+     }
      return { success: true };
    } catch(e) { return { success: false, error: e.message }; }
 });
 
-ipcMain.handle('update-local-event', (e, id, start_time, end_time) => {
+ipcMain.handle('delete-local-event', (e, id) => {
    try {
-     db.prepare('UPDATE events SET start_time = ?, end_time = ? WHERE id = ?').run(start_time, end_time, id);
+     db.prepare('DELETE FROM events WHERE id = ?').run(id);
      return { success: true };
    } catch(e) { return { success: false, error: e.message }; }
 });

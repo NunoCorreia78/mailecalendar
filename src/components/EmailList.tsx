@@ -14,6 +14,7 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
   // States for new features
   const [filterType, setFilterType] = useState('all'); // 'all' | 'unread' | 'starred' | 'pinned'
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, emailId: string } | null>(null);
+  const [visibleCount, setVisibleCount] = useState(100);
 
   // Global click to close context menu
   useEffect(() => {
@@ -59,19 +60,24 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
 
   useEffect(() => {
     loadLocalEmails(currentFolder);
+    setVisibleCount(100);
     const handler = () => loadLocalEmails(currentFolder);
     window.addEventListener('background-sync-done', handler);
-    
+
+    // Sync in background — don't block UI
     handleSync(currentFolder);
     setSelectedIds(new Set());
     setActiveEmail(null);
-    
+
     const handleOpenCompose = () => {
        setComposeTo(''); setComposeSubject(''); setComposeBody('');
        setIsComposing(true);
     };
     window.addEventListener('open-compose', handleOpenCompose);
-    return () => window.removeEventListener('open-compose', handleOpenCompose);
+    return () => {
+      window.removeEventListener('background-sync-done', handler);
+      window.removeEventListener('open-compose', handleOpenCompose);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFolder]);
 
@@ -218,7 +224,16 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
 
   if (activeEmail) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', animation: 'fadeIn 0.3s ease-out', position: 'relative' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', animation: 'fadeIn 0.3s ease-out', position: 'relative' }}
+        onContextMenu={(e) => {
+          // Only show context menu if not right-clicking on a link or interactive element
+          const target = e.target as HTMLElement;
+          if (!target.closest('button') && !target.closest('a') && !target.closest('iframe')) {
+            e.preventDefault();
+            setContextMenu({ x: e.clientX, y: e.clientY, emailId: activeEmail.id });
+          }
+        }}
+      >
          <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 24px rgba(0,0,0,0.06)', padding: '24px 32px', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', border: '1px solid var(--border)' }}>
              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', borderBottom: '1px solid var(--bg-tertiary)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
@@ -226,7 +241,10 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
                 </div>
                 {/* Context Actions */}
                 <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--bg-tertiary)', padding: '6px', borderRadius: '30px' }}>
-                   <button title="Archivar" className="action-btn" onClick={() => executeLocalMove([activeEmail.id], 'Archive')}><Archive size={18} /></button>
+                   <button title="Fixar" className="action-btn" onClick={() => executeFlag(activeEmail.id, 'is_pinned', activeEmail.is_pinned === 1)}><Pin size={18} fill={activeEmail.is_pinned ? 'currentColor' : 'none'} /></button>
+                   <button title="Marcar com estrela" className="action-btn" onClick={() => executeFlag(activeEmail.id, 'is_important', activeEmail.is_important === 1)} style={{ color: activeEmail.is_important ? '#fbbc04' : undefined }}><Star size={18} fill={activeEmail.is_important ? '#fbbc04' : 'none'} /></button>
+                   <div style={{ width: '1px', backgroundColor: 'var(--border)', margin: '4px 2px' }} />
+                   <button title="Arquivar" className="action-btn" onClick={() => executeLocalMove([activeEmail.id], 'Archive')}><Archive size={18} /></button>
                    <button title="Marcar como Spam" className="action-btn" onClick={() => executeLocalMove([activeEmail.id], 'Spam')}><AlertOctagon size={18} /></button>
                    <button title="Eliminar" className="action-btn" onClick={() => executeLocalMove([activeEmail.id], 'Trash')}><Trash2 size={18} /></button>
                 </div>
@@ -271,6 +289,34 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
          </div>
 
          {isComposing && <Composer closeModal={() => setIsComposing(false)} to={composeTo} setTo={setComposeTo} subject={composeSubject} setSubject={setComposeSubject} body={composeBody} setBody={setComposeBody} send={handleSend} sending={sending} onSaveDraft={handleSaveDraft} />}
+
+         {/* Context menu on reading view */}
+         {contextMenu && contextMenu.emailId === activeEmail.id && (
+           <div style={{ position: 'fixed', top: `${Math.min(contextMenu.y, window.innerHeight - 250)}px`, left: `${Math.min(contextMenu.x, window.innerWidth - 200)}px`, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 1000, minWidth: '200px', padding: '8px 0', animation: 'fadeIn 0.15s ease-out' }} onClick={(e) => e.stopPropagation()}>
+             <div className="ctx-item" onClick={() => { executeFlag(activeEmail.id, 'is_read', activeEmail.is_read === 1); setContextMenu(null); }}>
+               <Mail size={14} style={{ marginRight: '8px' }} /> {activeEmail.is_read ? 'Marcar como Não Lida' : 'Marcar como Lida'}
+             </div>
+             <div className="ctx-item" onClick={() => { executeFlag(activeEmail.id, 'is_important', activeEmail.is_important === 1); setContextMenu(null); }}>
+               <Star size={14} style={{ marginRight: '8px' }} /> {activeEmail.is_important ? 'Remover Estrela' : 'Adicionar Estrela'}
+             </div>
+             <div className="ctx-item" onClick={() => { executeFlag(activeEmail.id, 'is_pinned', activeEmail.is_pinned === 1); setContextMenu(null); }}>
+               <Pin size={14} style={{ marginRight: '8px' }} /> {activeEmail.is_pinned ? 'Desafixar' : 'Fixar'}
+             </div>
+             <div className="ctx-item" onClick={() => { openReply(activeEmail); setContextMenu(null); }}>
+               <Reply size={14} style={{ marginRight: '8px' }} /> Responder
+             </div>
+             <div className="ctx-item" onClick={() => { openForward(activeEmail); setContextMenu(null); }}>
+               <Forward size={14} style={{ marginRight: '8px' }} /> Reencaminhar
+             </div>
+             <div style={{ height: '1px', backgroundColor: 'var(--border)', margin: '4px 0' }} />
+             <div className="ctx-item" onClick={() => { executeLocalMove([activeEmail.id], 'Archive'); setContextMenu(null); }}>
+               <Archive size={14} style={{ marginRight: '8px' }} /> Arquivar
+             </div>
+             <div className="ctx-item ctx-item-danger" onClick={() => { executeLocalMove([activeEmail.id], 'Trash'); setContextMenu(null); }}>
+               <Trash2 size={14} style={{ marginRight: '8px' }} /> Eliminar
+             </div>
+           </div>
+         )}
       </div>
     );
   }
@@ -348,7 +394,7 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
       {error && <div style={{ padding: '12px', backgroundColor: '#fcf1f1', color: '#c53030', borderRadius: '12px', fontSize: '0.90rem' }}>{error}</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto' }}>
-        {filteredEmails.map(mail => {
+        {filteredEmails.slice(0, visibleCount).map(mail => {
           let cleanName = mail.sender;
           const match = /^"?(.*?)"?\s*</.exec(mail.sender);
           if (match && match[1]) cleanName = match[1].trim();
@@ -386,6 +432,13 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
             </div>
           );
         })}
+        {visibleCount < filteredEmails.length && (
+          <div style={{ textAlign: 'center', padding: '16px' }}>
+            <button onClick={() => setVisibleCount(v => v + 100)} style={{ padding: '8px 24px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '20px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Mostrar mais ({filteredEmails.length - visibleCount} restantes)
+            </button>
+          </div>
+        )}
         {filteredEmails.length === 0 && !syncing && (
            <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '50px' }}>
               <Mail size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />
@@ -396,14 +449,30 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
 
       {isComposing && <Composer closeModal={() => setIsComposing(false)} to={composeTo} setTo={setComposeTo} subject={composeSubject} setSubject={setComposeSubject} body={composeBody} setBody={setComposeBody} send={handleSend} sending={sending} onSaveDraft={handleSaveDraft} />}
 
-      {/* Context Menu */}
+      {/* Context Menu (list view) */}
       {contextMenu && (
-        <div style={{ position: 'fixed', top: `${contextMenu.y}px`, left: `${contextMenu.x}px`, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: 'var(--shadow-lg)', zIndex: 1000, minWidth: '180px', padding: '8px 0', animation: 'fadeIn 0.15s ease-out' }} onClick={(e) => e.stopPropagation()}>
-           <div className="ctx-item" onClick={() => { const em = emails.find(e=>e.id===contextMenu.emailId); if(em) executeFlag(em.id, 'is_read', em.is_read===1); setContextMenu(null); }}>Marcar como {emails.find(e=>e.id===contextMenu.emailId)?.is_read ? 'Não Lida' : 'Lida'}</div>
-           <div className="ctx-item" onClick={() => { executeLocalMove([contextMenu.emailId], 'Archive'); setContextMenu(null); }}>Arquivar</div>
-           <div className="ctx-item" onClick={() => { executeLocalMove([contextMenu.emailId], 'Trash'); setContextMenu(null); }}>Eliminar</div>
-           <div style={{ height: '1px', backgroundColor: 'var(--border)', margin: '4px 0' }}></div>
-           <div className="ctx-item" onClick={() => { executeLocalMove([contextMenu.emailId], 'Spam'); setContextMenu(null); }}>Marcar como Spam</div>
+        <div style={{ position: 'fixed', top: `${Math.min(contextMenu.y, window.innerHeight - 280)}px`, left: `${Math.min(contextMenu.x, window.innerWidth - 200)}px`, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 1000, minWidth: '200px', padding: '8px 0', animation: 'fadeIn 0.15s ease-out' }} onClick={(e) => e.stopPropagation()}>
+          {(() => { const em = emails.find(e => e.id === contextMenu.emailId); if (!em) return null; return (<>
+            <div className="ctx-item" onClick={() => { executeFlag(em.id, 'is_read', em.is_read === 1); setContextMenu(null); }}>
+              <Mail size={14} style={{ marginRight: '8px' }} /> {em.is_read ? 'Marcar como Não Lida' : 'Marcar como Lida'}
+            </div>
+            <div className="ctx-item" onClick={() => { executeFlag(em.id, 'is_important', em.is_important === 1); setContextMenu(null); }}>
+              <Star size={14} style={{ marginRight: '8px' }} /> {em.is_important ? 'Remover Estrela' : 'Adicionar Estrela'}
+            </div>
+            <div className="ctx-item" onClick={() => { executeFlag(em.id, 'is_pinned', em.is_pinned === 1); setContextMenu(null); }}>
+              <Pin size={14} style={{ marginRight: '8px' }} /> {em.is_pinned ? 'Desafixar' : 'Fixar'}
+            </div>
+            <div style={{ height: '1px', backgroundColor: 'var(--border)', margin: '4px 0' }} />
+            <div className="ctx-item" onClick={() => { executeLocalMove([contextMenu.emailId], 'Archive'); setContextMenu(null); }}>
+              <Archive size={14} style={{ marginRight: '8px' }} /> Arquivar
+            </div>
+            <div className="ctx-item" onClick={() => { executeLocalMove([contextMenu.emailId], 'Spam'); setContextMenu(null); }}>
+              <AlertOctagon size={14} style={{ marginRight: '8px' }} /> Marcar como Spam
+            </div>
+            <div className="ctx-item ctx-item-danger" onClick={() => { executeLocalMove([contextMenu.emailId], 'Trash'); setContextMenu(null); }}>
+              <Trash2 size={14} style={{ marginRight: '8px' }} /> Eliminar
+            </div>
+          </>); })()}
         </div>
       )}
 
@@ -412,8 +481,9 @@ export default function EmailList({ currentFolder }: { currentFolder: string }) 
         .action-btn:hover { background-color: var(--border); color: var(--text-primary); }
         .pill-btn { background: transparent; border: 1px solid var(--border); border-radius: 20px; padding: 8px 20px; font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: all 0.15s ease; display: flex; align-items: center; }
         .pill-btn:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
-        .ctx-item { padding: 8px 16px; font-size: 0.9rem; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; transition: background-color 0.1s; }
+        .ctx-item { padding: 9px 16px; font-size: 0.9rem; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; transition: background-color 0.1s; }
         .ctx-item:hover { background-color: var(--accent); color: white; }
+        .ctx-item-danger:hover { background-color: #ea4335 !important; color: white !important; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
       `}</style>
