@@ -91,5 +91,11 @@ try {
   )`);
 } catch (e) {}
 
+// Migração: cor do evento no calendário
+try { db.exec("ALTER TABLE events ADD COLUMN color TEXT DEFAULT '#0b57d0'"); } catch (e) {}
+
+// Migração: título editável nos eventos locais
+try { db.exec("ALTER TABLE events ADD COLUMN description TEXT"); } catch (e) {}
+
 module.exports = db;
 
